@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SampleAndroidApp"
+rootProject.name = "Solo Arc"
 include(":app")

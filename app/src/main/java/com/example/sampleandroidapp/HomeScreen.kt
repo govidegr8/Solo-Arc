@@ -8,8 +8,11 @@ import android.animation.ArgbEvaluator
 import android.animation.ValueAnimator
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.*
 import java.text.SimpleDateFormat
@@ -25,6 +28,53 @@ class HomeScreen(
     private val onAddTask: () -> Unit,
     private val onTaskUpdated: () -> Unit,
 ) {
+    private class PinIconView(context: MainActivity, private val color: Int) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = Ui.dp(context, 1).toFloat()
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            paint.color = color
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val body = Path().apply {
+                moveTo(centerX, centerY - Ui.dp(context, 9))
+                cubicTo(
+                    centerX - Ui.dp(context, 6), centerY - Ui.dp(context, 9),
+                    centerX - Ui.dp(context, 8), centerY - Ui.dp(context, 3),
+                    centerX - Ui.dp(context, 6), centerY + Ui.dp(context, 2),
+                )
+                lineTo(centerX, centerY + Ui.dp(context, 9))
+                lineTo(centerX + Ui.dp(context, 6), centerY + Ui.dp(context, 2))
+                cubicTo(
+                    centerX + Ui.dp(context, 8), centerY - Ui.dp(context, 3),
+                    centerX + Ui.dp(context, 6), centerY - Ui.dp(context, 9),
+                    centerX, centerY - Ui.dp(context, 9),
+                )
+                close()
+            }
+            canvas.drawPath(body, paint)
+            canvas.drawLine(
+                centerX,
+                centerY + Ui.dp(context, 9),
+                centerX,
+                centerY + Ui.dp(context, 13),
+                paint,
+            )
+            canvas.drawLine(
+                centerX - Ui.dp(context, 4),
+                centerY + Ui.dp(context, 13),
+                centerX + Ui.dp(context, 4),
+                centerY + Ui.dp(context, 13),
+                paint,
+            )
+        }
+    }
+
     fun build(): View {
         val root = FrameLayout(context).apply { setBackgroundColor(Ui.BG) }
         val scroll = ScrollView(context).apply {
@@ -129,10 +179,7 @@ class HomeScreen(
                 questViews.getOrPut(task.id) {
                     questRow(task, index, levelBadge, summary.view, summary.update, refreshQuests)
                 }.also { view ->
-                    updateQuestRow(view, task) {
-                        repository.togglePinned(task)
-                        refreshQuests()
-                    }
+                    updateQuestRow(view, task)
                 }
             }
             questViews.keys.retainAll(orderedTasks.map { it.id }.toSet())
@@ -280,18 +327,27 @@ class HomeScreen(
         copy.addView(title)
         copy.addView(Ui.label(context, "${task.detail}  ·  ${Ui.displayTime(task.time)}  ·  +${task.xp} XP", 12, Ui.MUTED), Ui.margin(context, 0, 4, 0, 0))
         row.addView(copy, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(Ui.dp(context, 10), 0, Ui.dp(context, 6), 0) })
-        updateQuestRow(row, task) {
-            repository.togglePinned(task)
-            refreshQuests()
-        }
+        updateQuestRow(row, task)
+        val handler = Handler(Looper.getMainLooper())
+        var pendingTap: Runnable? = null
         row.setOnClickListener {
-            val levelChange = repository.toggle(task)
-            if (levelChange != LevelChange.NONE) {
-                levelBadge.text = "LVL ${repository.level}"
-                animateLevelChange(levelBadge, summaryCard, levelChange)
+            pendingTap?.let {
+                handler.removeCallbacks(it)
+                pendingTap = null
+                repository.togglePinned(task)
+                refreshQuests()
+                return@setOnClickListener
             }
-            updateSummary()
-            refreshQuests()
+            pendingTap = Runnable {
+                pendingTap = null
+                val levelChange = repository.toggle(task)
+                if (levelChange != LevelChange.NONE) {
+                    levelBadge.text = "LVL ${repository.level}"
+                    animateLevelChange(levelBadge, summaryCard, levelChange)
+                }
+                updateSummary()
+                refreshQuests()
+            }.also { handler.postDelayed(it, ViewConfiguration.getDoubleTapTimeout().toLong()) }
         }
         row.setOnLongClickListener {
             QuestDialogs(context, repository, scheduler).showEditTaskDialog(task) {
@@ -302,13 +358,14 @@ class HomeScreen(
         return row
     }
 
-    private fun updateQuestRow(row: View, task: Task, onPin: () -> Unit) {
+    private fun updateQuestRow(row: View, task: Task) {
         val container = row as LinearLayout
         val complete = repository.isCompleted(task)
         val missed = !complete && task.time.toMinutes() < Calendar.getInstance().let {
             it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE)
         }
         container.background = when {
+            repository.isPinned(task) -> Ui.outlined(context, Ui.SURFACE, Ui.GOLD, 1, 20)
             complete -> Ui.rounded(context, Color.rgb(28, 52, 55), 20)
             missed -> Ui.outlined(context, Ui.SURFACE, Ui.RED, 1, 20)
             else -> Ui.rounded(context, Ui.SURFACE, 20)
@@ -316,17 +373,13 @@ class HomeScreen(
         container.getChildAt(0).background = Ui.rounded(context, categoryColor(task.category), 100)
         val oldCheck = container.getChildAt(1)
         val check: View = when {
-            repository.isPinned(task) -> Ui.label(context, "📌", 23, Ui.ACCENT).apply { gravity = Gravity.CENTER }
+            repository.isPinned(task) -> PinIconView(context, Ui.GOLD)
             complete -> Ui.label(context, "✓", 23, Ui.GREEN).apply { gravity = Gravity.CENTER }
             task.category.isNotEmpty() -> CategoryIconView(context, task.category)
             else -> Ui.label(context, "○", 23, Ui.ACCENT).apply { gravity = Gravity.CENTER }
         }
         container.removeViewAt(1)
         container.addView(check, 1, oldCheck.layoutParams)
-        check.setOnLongClickListener {
-            onPin()
-            true
-        }
         val copy = container.getChildAt(2) as LinearLayout
         val titleIndex = if (task.category.isNotEmpty()) 1 else 0
         (copy.getChildAt(titleIndex) as TextView).setTextColor(if (complete) Ui.MUTED else Ui.TEXT)

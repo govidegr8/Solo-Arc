@@ -7,7 +7,7 @@
         android:label="@string/app_name"
         android:icon="@drawable/ic_winter_arc"
         android:roundIcon="@drawable/ic_winter_arc"
-        android:theme="@style/Theme.SampleAndroidApp">
+        android:theme="@style/Theme.SoloArc">
         <activity
             android:name=".MainActivity"
             android:exported="true">
