@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SampleAndroidApp" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#0F1424</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:colorAccent">#A8B9FF</item>
+    </style>
+
+    <style name="Theme.SoloArc.TimePicker" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#1D243B</item>
+        <item name="android:colorAccent">#859DFF</item>
+        <item name="android:textColorPrimary">#F2F4FF</item>
+        <item name="android:textColorSecondary">#A4AECA</item>
+        <item name="android:windowTitleBackgroundStyle">@null</item>
+    </style>
+</resources>
